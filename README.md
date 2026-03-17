@@ -1,46 +1,52 @@
-# Everything Skill
+# everything
 
-An OpenClaw skill for using Voidtools Everything as a whole-PC file and folder search capability on Windows.
+这是一个 OpenClaw Skill，用于将 Voidtools Everything 封装为可调用技能，为 Windows 提供整机范围的文件与文件夹搜索能力。
 
-## What it does
+它适合这样的场景：当用户想在**整台电脑**里查找文件或文件夹，但**没有明确提供具体路径**时，代理应优先使用 Everything 进行搜索，而不是只在当前目录或某个局部范围内查找。
 
-This skill tells the agent to treat Everything as the default tool for **searching the whole local machine** when the user wants to find files or folders but does **not** specify an absolute path or relative location.
+## 安装
 
-It also covers:
+非常简单，你只需将以下消息发送给 OpenClaw：
 
-- `es.exe` command-line searching and exporting
-- `Everything.exe` launch/search/window options
-- EFU file-list creation and opening
-- translating Everything docs into executable commands
+```markdown
+# 请安装数你最灵 skill
+1. 从 `https://github.com/SsuJojo/everything-skill.git` 克隆仓库到工作目录的 `skills/` 并更名为 `everything`
+2. 将其作为 **skill** 加载，删除 .git 文件夹和 README.md
+3. 执行 **Initial implementation scope** 中的指令并标记为已配置
+```
 
-## Trigger rule
+## 适用场景
 
-Use this skill when the user is effectively saying:
+当用户表达的是以下这类意图时，应使用这个 skill：
 
-- find a file somewhere on this PC
-- search all drives / whole machine
-- list matching files/folders globally
-- export search results from Everything
+* 在这台电脑里找某个文件
+* 搜索所有磁盘 / 全机范围
+* 全局列出匹配的文件或文件夹
+* 通过 Everything 导出搜索结果
 
-Do not use whole-PC search behavior when the user already provided a concrete scope, such as a full path, project-relative path, or a clearly named folder.
+当用户已经明确提供了具体范围时，则**不应**使用整机搜索逻辑，例如：
 
-## Included files
+* 已给出绝对路径
+* 已给出相对路径
+* 已明确限定某个文件夹或项目目录
 
-- `SKILL.md` — main skill instructions
-- `references/es-cli.md` — `es.exe` reference
-- `references/everything-options.md` — `Everything.exe` reference
+## 包含文件
 
-## Example requests
+* `SKILL.md`：主技能说明
+* `references/es-cli.md`：`es.exe` 命令行参考
+* `references/everything-options.md`：`Everything.exe` 参数参考
 
-- 帮我找一下 `resume.pdf`
-- 搜一下电脑里所有 `.mp3`
-- 查找最近修改的 20 个文件
-- 只列出文件夹
-- 打开 Everything 并搜索 `ABC|123`
-- 导出所有 mp3 为 `mp3.efu`
+## 示例请求
 
-## Notes
+* 帮我找一下 `resume.pdf`
+* 搜一下电脑里所有 `.mp3`
+* 查找最近修改的 20 个文件
+* 只列出文件夹
+* 打开 Everything 并搜索 `ABC|123`
+* 导出所有 mp3 为 `mp3.efu`
 
-- `es.exe` requires Everything to be installed and running.
-- Search coverage depends on what Everything has indexed.
-- Installation, service, and USN journal actions should be treated as sensitive operations.
+## 说明
+
+* `es.exe` 依赖 Everything 已正确安装并处于运行状态
+* 搜索结果覆盖范围取决于 Everything 当前建立的索引
+* 安装、服务管理、USN 日志相关操作属于敏感操作，应谨慎处理
