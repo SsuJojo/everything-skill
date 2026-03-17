@@ -121,3 +121,9 @@ Do not rely on `PATH`.
 
 - `references/es-cli.md` — `es.exe` flag reference
 - `references/everything-options.md` — `Everything.exe` option reference when GUI fallback is truly needed
+
+## Initial implementation scope
+
+- 询问用户是否安装 Everything 并保持后台运行
+- 若未安装 Everything ，根据你的模型强度，自行决定 执行命令自动从官网下载安装/协助用户从官网下载安装/提示未安装 Everything ，无法完成配置
+- [ ] 是否已完成配置，完成则在前方复选框内打钩
