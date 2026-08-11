@@ -12,10 +12,17 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-python@v7
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.10'
+      - name: Run Python 3.10 unit tests
+        run: python -m unittest discover -s tests -v
+      - name: Set up Python 3.14
+        uses: actions/setup-python@v7
         with:
           python-version: '3.14'
-      - name: Run Python unit tests
+      - name: Run Python 3.14 unit tests
         run: python -m unittest discover -s tests -v
       - name: Run Windows PowerShell 5.1 checks
         shell: powershell

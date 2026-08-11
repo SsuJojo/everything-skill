@@ -90,7 +90,7 @@ python -m unittest discover -s tests -v
 powershell.exe -NoProfile -File tests/test_ensure_everything_tools.ps1
 ```
 
-CI 使用 Windows 和 Python 3.14，并分别在 Windows PowerShell 5.1 与 PowerShell 7 中运行 helper 测试，同时执行最小单元测试及 Agent Skills 规范验证。项目不承诺 Python 3.8 兼容。
+CI 使用 Windows，并在 Python 3.10 与 3.14 上运行单元测试；helper 测试分别覆盖 Windows PowerShell 5.1 与 PowerShell 7，同时执行 Agent Skills 规范验证。项目不承诺 Python 3.8 兼容。
 
 ## 第三方组件
 

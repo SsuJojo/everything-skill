@@ -51,6 +51,8 @@ class SkillStructureTests(unittest.TestCase):
         text = (REPOSITORY_ROOT / '.github' / 'workflows' / 'ci.yml').read_text(
             encoding='utf-8'
         )
+        self.assertIn("python-version: '3.10'", text)
+        self.assertIn("python-version: '3.14'", text)
         self.assertIn('shell: powershell', text)
         self.assertIn('shell: pwsh', text)
 
