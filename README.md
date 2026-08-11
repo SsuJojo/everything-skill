@@ -1,52 +1,97 @@
-# everything
+# Everything Skill
 
-这是一个 OpenClaw Skill，用于将 Voidtools Everything 封装为可调用技能，为 Windows 提供整机范围的文件与文件夹搜索能力。
+这是一个遵循通用 Agent Skills 目录约定的 Windows 全机文件搜索 Skill。它通过 Voidtools Everything 的 `es.exe` 查询现有索引，并提供简单的 Unicode 输出、默认结果限制和 offset 分页。
 
-它适合这样的场景：当用户想在**整台电脑**里查找文件或文件夹，但**没有明确提供具体路径**时，代理应优先使用 Everything 进行搜索，而不是只在当前目录或某个局部范围内查找。
+项目不依赖任何特定 Agent 或 Harness。运行时文件均基于 Skill 自身目录定位。
+
+## 运行要求
+
+- Windows
+- Python 3.10 或更高版本
+- 已安装、完成索引并正在运行的 [Everything](https://www.voidtools.com/)
+- 当前 Agent 或 sandbox 的执行环境能够访问 Everything IPC
+
+Agent 能读取 Skill 文件，不等于其 sandbox 一定能连接宿主机 Everything。IPC 不可达时，ES 返回码 `8` 也可能表示 Everything 未运行、命名实例不匹配或执行环境隔离，而不一定表示未安装。
 
 ## 安装
 
-非常简单，你只需将以下消息发送给 OpenClaw：
+将仓库克隆或完整复制到 Agent 的 skills 位置，并将最终目录命名为 `everything`：
 
-```markdown
-# 请安装数你最灵 skill
-1. 从 `https://github.com/SsuJojo/everything-skill.git` 克隆仓库到工作目录的 `skills/` 并更名为 `everything`
-2. 将其作为 **skill** 加载，删除 .git 文件夹和 README.md
-3. 执行 **Initial implementation scope** 中的指令并标记为已配置
+```text
+<agent-skills>/everything/SKILL.md
 ```
 
-## 适用场景
+不要只复制 `SKILL.md`；`scripts/`、`bin/`、`references/` 和 `licenses/` 都属于 Skill 运行时。
 
-当用户表达的是以下这类意图时，应使用这个 skill：
+## 目录结构
 
-* 在这台电脑里找某个文件
-* 搜索所有磁盘 / 全机范围
-* 全局列出匹配的文件或文件夹
-* 通过 Everything 导出搜索结果
+```text
+everything/
+├── SKILL.md
+├── README.md
+├── agents/
+│   └── openai.yaml              # 可选的 OpenAI/Codex UI metadata
+├── bin/
+│   ├── es.exe                   # bundled ES 1.1.0.37 x64
+│   └── es.manifest.json
+├── licenses/
+│   └── ES-LICENSE.txt
+├── references/
+│   ├── es-cli.md
+│   └── everything-options.md
+└── scripts/
+    ├── es_wrapper.py
+    └── ensure-everything-tools.ps1
+```
 
-当用户已经明确提供了具体范围时，则**不应**使用整机搜索逻辑，例如：
+`agents/openai.yaml` 仅提供可选 UI metadata；核心 Skill 与运行时脚本不会读取或依赖它。
 
-* 已给出绝对路径
-* 已给出相对路径
-* 已明确限定某个文件夹或项目目录
+## 快速验证
 
-## 包含文件
+从仓库根目录执行基本搜索：
 
-* `SKILL.md`：主技能说明
-* `references/es-cli.md`：`es.exe` 命令行参考
-* `references/everything-options.md`：`Everything.exe` 参数参考
+```powershell
+python scripts/es_wrapper.py --format json -- "*.pdf"
+```
 
-## 示例请求
+诊断 bundled ES 与 Everything IPC（不会自动下载）：
 
-* 帮我找一下 `resume.pdf`
-* 搜一下电脑里所有 `.mp3`
-* 查找最近修改的 20 个文件
-* 只列出文件夹
-* 打开 Everything 并搜索 `ABC|123`
-* 导出所有 mp3 为 `mp3.efu`
+```powershell
+pwsh -NoProfile -File scripts/ensure-everything-tools.ps1
+```
 
-## 说明
+只有在用户同意后，才允许 helper 修复缺失或架构不兼容的 ES：
 
-* `es.exe` 依赖 Everything 已正确安装并处于运行状态
-* 搜索结果覆盖范围取决于 Everything 当前建立的索引
-* 安装、服务管理、USN 日志相关操作属于敏感操作，应谨慎处理
+```powershell
+pwsh -NoProfile -File scripts/ensure-everything-tools.ps1 -AllowDownload
+```
+
+helper 从官方 [`voidtools/ES`](https://github.com/voidtools/ES) 最新 release 选择与 Windows 原生架构匹配的 x86、x64、ARM 或 ARM64 asset。它不会安装 Everything 主程序。
+
+## Wrapper 行为
+
+- 从自身位置解析 `bin/es.exe`
+- 将 ES 1.1.0.37 的 `-argv` 放在 ES 参数首位，以支持 Unicode 输入
+- 默认最多返回 20 行，可通过 `--output-limit` 调整
+- 使用 `--offset` 进行简单分页
+- 提供 text、json 和 json-pretty 输出
+- 将高级 ES 选项与 export 参数直接透传
+
+对于统计、列输出、CSV/JSON 等 ES 原生 stdout，建议使用 `--format text`。完整导出应使用 `--output-limit -1`，并遵循宿主 Harness 正常的文件写入和覆盖确认规则。
+
+## 开发验证
+
+```powershell
+python -m unittest discover -s tests -v
+pwsh -NoProfile -File tests/test_ensure_everything_tools.ps1
+```
+
+CI 使用 Windows、Python 3.14 和 PowerShell 7，并运行最小单元测试及 Agent Skills 规范验证。项目不承诺 Python 3.8 或 Windows PowerShell 5.1 的长期兼容矩阵。
+
+## 第三方组件
+
+仓库内置 `bin/es.exe` 为 ES 1.1.0.37 x64。其版本、来源、架构和 SHA-256 记录在 `bin/es.manifest.json`，MIT 许可证副本位于 `licenses/ES-LICENSE.txt`。
+
+manifest 只描述仓库或发行包内置的 binary。helper 在本机运行时从 `releases/latest` 修复 ES 后，不会修改 manifest 或其他 Git metadata。
+
+本仓库尚未替项目自有代码选择许可证；第三方 ES 的 MIT License 不自动适用于仓库内其他文件。

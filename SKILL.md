@@ -1,129 +1,82 @@
 ---
 name: everything
-description: Search the whole Windows PC for files or folders with Voidtools Everything. Use when the user wants to find files/folders but did not give an absolute path or a clear fixed folder. Prefer this skill for broad machine-wide search, especially when Chinese file paths, result limiting, and pagination matter.
+description: Search an entire Windows PC for files and folders with Voidtools Everything. Use for machine-wide searches when the user has not supplied a specific directory, especially when bounded results, Unicode paths, or pagination are useful.
 ---
 
 # Everything
 
-Use this skill for whole-PC file and folder search on Windows.
+Use this Skill for whole-PC file and folder searches on Windows. If the user already supplied a concrete path or project directory, use the normal filesystem tools for that scope instead.
 
-## Core job
+## Requirements
 
-1. Treat requests without a concrete path as whole-PC search.
-2. Use `skills\everything\scripts\es_wrapper.py` as the default entrypoint.
-3. Let the wrapper call `skills\everything\bin\es.exe`, decode raw bytes safely, and return UTF-8 text or JSON.
-4. Keep both search volume and output volume capped by default.
-5. Use pagination with `--offset` for broad queries.
-6. Use `Everything.exe` only if the task explicitly needs the GUI or `es.exe` cannot solve it.
+- Windows
+- Python 3.10 or newer
+- Everything installed, indexed, and running
+- The current execution environment can reach the Everything IPC interface
 
-## Trigger rule
+Being able to read this Skill does not prove that an Agent sandbox can access Everything on the host. IPC may still be isolated.
 
-Use this skill when the user wants to find a file or folder but does **not** provide a concrete path scope.
+## Locate runtime files
 
-Examples:
+Treat the directory containing this `SKILL.md` as the Skill root. Resolve runtime files from that directory:
 
-- `帮我找一下 resume.pdf`
-- `搜一下电脑里有没有 Cursor 安装包`
-- `查找所有 mp3`
-- `把最近修改的 20 个文件列出来`
-- `只看文件夹`
+- `scripts/es_wrapper.py` — normal search entrypoint
+- `scripts/ensure-everything-tools.ps1` — CLI and IPC diagnostic/repair helper
+- `bin/es.exe` — bundled ES command-line client
 
-Do **not** use whole-PC search behavior when the user already gave:
+Do not assume a particular workspace, username, Agent product, or installation path.
 
-- a full path like `C:\Users\...`
-- a relative scope like `在项目根目录下找`
-- a fixed folder like `去下载目录找`
+## Search workflow
 
-## Workflow
+1. Resolve `scripts/es_wrapper.py` from the Skill root.
+2. Run the wrapper with `--format json` for ordinary searches.
+3. Keep the default result limit unless the user asks for more.
+4. For broad searches, request another page with `--offset`.
+5. Stop paging after an empty page or a page shorter than the requested limit.
+6. Summarize useful matches instead of dumping large result sets.
 
-1. Decide whether the request is a whole-PC search.
-2. If the user did not specify a path, search with `es_wrapper.py` first.
-3. Keep the wrapper default limits unless the user clearly asks for more results.
-4. For large result sets, page with `--offset` instead of dumping more rows at once.
-5. If `es.exe` is missing or broken, repair it with `scripts\ensure-everything-tools.ps1` and retry.
-6. Use `Everything.exe` only as a fallback for GUI-specific tasks.
-7. Return concise natural-language results unless the user asked for raw output.
-
-## Response style for search requests
-
-- Send only one short progress line before searching: `正在使用 Everything 查找…`
-- Do not narrate extra internal steps.
-- After the progress line, directly return the result.
-- If the task is simply “find and send a file”, send it immediately once found.
-
-## Quick start
-
-- Default entrypoint:
+Conceptual commands, where `<skill-root>` is resolved at runtime:
 
 ```powershell
-python skills\everything\scripts\es_wrapper.py -- <query>
+python "<skill-root>\scripts\es_wrapper.py" --format json -- "resume.pdf"
+python "<skill-root>\scripts\es_wrapper.py" --format json --output-limit 10 -- "*.mp3"
+python "<skill-root>\scripts\es_wrapper.py" --format json --output-limit 10 --offset 10 -- "*.mp3"
+python "<skill-root>\scripts\es_wrapper.py" --format json -- /ad "project"
 ```
 
-- Limit rows explicitly when needed:
+The wrapper passes arguments after `--` to ES. It adds `-argv` for Unicode input, locates the bundled executable relative to itself, and injects `-max-results` and `-offset` only when the caller did not already supply them.
+
+The JSON output includes the ES command and return code, decoded result lines, counts, limit metadata, the effective offset, and `next_offset`. This is a convenience response for Agents, not a separate public SDK contract.
+
+For ES output modes such as version, statistics, columns, CSV, or JSON, prefer wrapper text mode so ES stdout remains direct:
 
 ```powershell
-python skills\everything\scripts\es_wrapper.py --output-limit 10 -- <query>
+python "<skill-root>\scripts\es_wrapper.py" --format text -- -get-result-count "*.pdf"
 ```
 
-- Get the next page:
+## Diagnose or repair ES
+
+Run the helper without download flags to validate the bundled CLI and test real IPC connectivity:
 
 ```powershell
-python skills\everything\scripts\es_wrapper.py --output-limit 10 --offset 10 -- <query>
+pwsh -NoProfile -File "<skill-root>\scripts\ensure-everything-tools.ps1"
 ```
 
-## Wrapper behavior
-
-`skills\everything\scripts\es_wrapper.py` should be the normal path for searches.
-
-It should:
-
-- call `skills\everything\bin\es.exe`
-- capture stdout/stderr as raw bytes
-- decode Chinese paths safely
-- emit UTF-8 text or JSON
-- cap output by default
-- inject `-max-results` when the caller forgot to limit results
-- inject `-offset` when using wrapper pagination and the caller did not already set one
-- return pagination metadata such as `next_offset`
-
-Use `--output-limit -1` only when the task truly needs unrestricted output.
-
-## Common patterns
+If ES is missing or incompatible, obtain user consent before allowing a download from the official `voidtools/ES` GitHub release:
 
 ```powershell
-python skills\everything\scripts\es_wrapper.py -- 晴天
-python skills\everything\scripts\es_wrapper.py --output-limit 10 -- 1
-python skills\everything\scripts\es_wrapper.py --output-limit 10 --offset 10 -- 1
-python skills\everything\scripts\es_wrapper.py --output-limit 20 -- -sort dm -n 20
-python skills\everything\scripts\es_wrapper.py --output-limit 20 -- /ad <query>
+pwsh -NoProfile -File "<skill-root>\scripts\ensure-everything-tools.ps1" -AllowDownload
 ```
 
-## Fallbacks
+ES return code `8` means the expected Everything IPC window could not be reached. Possible causes include Everything not being installed or running, a named-instance mismatch, or sandbox isolation. Do not claim that Everything is uninstalled based only on this code.
 
-### Repair `es.exe`
+## Export and state-changing options
 
-If `skills\everything\bin\es.exe` is missing or cannot run, use:
+ES export arguments are passed through unchanged. Use `--output-limit -1` when a complete export must not receive the wrapper's default ES result limit. Follow the host Agent's normal confirmation rules before writing or overwriting files.
 
-- `skills\everything\scripts\ensure-everything-tools.ps1`
-
-### Use `Everything.exe` only when necessary
-
-If the task explicitly requires the GUI app, locate `Everything.exe` first and run it by absolute path.
-Do not rely on `PATH`.
-
-## Safety notes
-
-- Do not change the global shell code page just to fix output.
-- Do not dump large result sets into context unless the user clearly asked for that.
-- Confirm before destructive or system-level actions.
+Obtain confirmation before ES or Everything options that change settings, run history, indexes, services, installation state, or files.
 
 ## References
 
-- `references/es-cli.md` — `es.exe` flag reference
-- `references/everything-options.md` — `Everything.exe` option reference when GUI fallback is truly needed
-
-## Initial implementation scope
-
-- 询问用户是否安装 Everything 并保持后台运行
-- 若未安装 Everything ，根据你的模型强度，自行决定 执行命令自动从官网下载安装/协助用户从官网下载安装/提示未安装 Everything ，无法完成配置
-- [ ] 是否已完成配置，完成则在前方复选框内打钩
+- `references/es-cli.md` — ES 1.1.0.37 search, output, export, and return-code reference
+- `references/everything-options.md` — selective `Everything.exe` GUI and administration reference

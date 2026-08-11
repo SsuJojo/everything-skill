@@ -1,0 +1,4 @@
+interface:
+  display_name: "Everything Search"
+  short_description: "Search files and folders across a Windows PC"
+  default_prompt: "Use $everything to search this Windows PC for files or folders."
