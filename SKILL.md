@@ -78,5 +78,5 @@ Obtain confirmation before ES or Everything options that change settings, run hi
 
 ## References
 
-- `references/es-cli.md` — ES 1.1.0.37 search, output, export, and return-code reference
-- `references/everything-options.md` — selective `Everything.exe` GUI and administration reference
+- [`references/es-cli.md`](references/es-cli.md) — ES 1.1.0.37 search, output, export, and return-code reference
+- [`references/everything-options.md`](references/everything-options.md) — selective `Everything.exe` GUI and administration reference
