@@ -21,7 +21,9 @@
 > # 请安装 Everything Skill
 >
 > 1. 将 `https://github.com/SsuJojo/everything-skill.git` 克隆到当前 Agent 的 Skills 目录，最终目录名设为 `everything`。
-> 2. 将其作为 Agent Skill 加载。仅在克隆得到的安装副本中删除 `.git` 文件夹和 `README.md`，保留 `SKILL.md`、`scripts/`、`bin/`、`references/`、`licenses/` 和可选的 `agents/`。
+> 2. 将其作为 Agent Skill 加载。仅清理克隆得到的安装副本：
+>    - 可删除不参与运行的仓库与开发文件：`.git/`、`.github/`、`.gitattributes`、`.gitignore`、`tests/` 和 `README.md`。
+>    - 必须保留完整的运行时内容：`SKILL.md`、`scripts/`、`bin/`、`references/`、`licenses/` 和可选的 `agents/`；不要删除其他文件。
 > 3. 阅读 `SKILL.md` 中的 Requirements，并运行 `scripts/ensure-everything-tools.ps1`，检查 bundled ES、系统架构和 Everything IPC 是否可用。
 > 4. 不要自动安装 Everything 主程序。如果 bundled ES 缺失或不兼容，在使用 `-AllowDownload` 修复前先征得用户同意。
 > 5. 验证成功后报告 Skill 的安装目录、ES 版本和 IPC 状态，并标记为已配置；如果失败，报告 helper 返回的消息和退出码。

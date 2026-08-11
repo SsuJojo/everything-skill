@@ -51,8 +51,18 @@ class SkillStructureTests(unittest.TestCase):
         text = (REPOSITORY_ROOT / 'README.md').read_text(encoding='utf-8')
         self.assertIn('https://github.com/SsuJojo/everything-skill.git', text)
         self.assertIn('最终目录名设为 `everything`', text)
-        self.assertIn('仅在克隆得到的安装副本中删除', text)
+        self.assertIn('仅清理克隆得到的安装副本', text)
+        for removable in (
+            '`.git/`',
+            '`.github/`',
+            '`.gitattributes`',
+            '`.gitignore`',
+            '`tests/`',
+            '`README.md`',
+        ):
+            self.assertIn(removable, text)
         self.assertIn('`SKILL.md`、`scripts/`、`bin/`、`references/`、`licenses/`', text)
+        self.assertIn('不要删除其他文件', text)
         self.assertIn('在使用 `-AllowDownload` 修复前先征得用户同意', text)
         self.assertIn('不要自动安装 Everything 主程序', text)
 
