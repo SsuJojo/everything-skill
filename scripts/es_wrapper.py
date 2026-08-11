@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import locale
 import subprocess
 import sys
 from pathlib import Path
@@ -12,46 +11,25 @@ from typing import Iterable
 
 RESULT_LIMIT_FLAGS = {'-n', '-max-results'}
 OFFSET_FLAGS = {'-offset'}
+CODE_PAGE_FLAGS = {'-cp', '/cp', '-code-page', '/code-page', '-codepage', '/codepage'}
 
 
-def candidate_encodings() -> list[str]:
-    """Return a small, deterministic decoder fallback list."""
-    encodings: list[str] = []
-
-    def add(name: str | None) -> None:
-        if name and name.lower() not in {item.lower() for item in encodings}:
-            encodings.append(name)
-
-    add('utf-8')
-    add(locale.getpreferredencoding(False))
-    add('mbcs')
-    add('gbk')
-    return encodings
-
-
-def split_lines(raw: bytes) -> list[bytes]:
-    normalized = raw.replace(b'\r\n', b'\n').replace(b'\r', b'\n')
-    return [line for line in normalized.split(b'\n') if line]
-
-
-def decode_line(raw_line: bytes) -> tuple[str, str]:
-    for encoding in candidate_encodings():
-        try:
-            return raw_line.decode(encoding), encoding
-        except (LookupError, UnicodeDecodeError):
-            continue
-    return raw_line.decode('utf-8', errors='replace'), 'utf-8-replace'
+def configure_utf8_stdio() -> None:
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, 'reconfigure', None)
+        if callable(reconfigure):
+            reconfigure(encoding='utf-8', errors='strict')
 
 
 def decode_output(raw: bytes) -> tuple[list[dict[str, str]], str]:
+    text = raw.decode('utf-8')
+    normalized = text.replace('\r\n', '\n').replace('\r', '\n')
     entries: list[dict[str, str]] = []
-    for raw_line in split_lines(raw):
-        text, encoding = decode_line(raw_line)
+    for line in (line for line in normalized.split('\n') if line):
         entries.append(
             {
-                'path': text,
-                'encoding': encoding,
-                'path_unicode_escape': text.encode('unicode_escape').decode('ascii'),
+                'path': line,
+                'path_unicode_escape': line.encode('unicode_escape').decode('ascii'),
             }
         )
     return entries, '\n'.join(item['path'] for item in entries)
@@ -101,8 +79,27 @@ def has_flag(es_args: list[str], flags: set[str]) -> bool:
     return False
 
 
-def ensure_argv(es_args: list[str]) -> list[str]:
-    return ['-argv', *(arg for arg in es_args if arg.lower() != '-argv')]
+def normalize_core_flags(es_args: list[str]) -> list[str]:
+    cleaned: list[str] = []
+    index = 0
+    while index < len(es_args):
+        arg = es_args[index]
+        lowered = arg.lower()
+        if arg == '--':
+            cleaned.extend(es_args[index:])
+            break
+        if lowered == '-argv':
+            index += 1
+            continue
+        if lowered in CODE_PAGE_FLAGS:
+            index += 2
+            continue
+        if any(lowered.startswith(flag + '=') for flag in CODE_PAGE_FLAGS):
+            index += 1
+            continue
+        cleaned.append(arg)
+        index += 1
+    return ['-argv', '-cp', '65001', *cleaned]
 
 
 def inject_result_limit(es_args: list[str], output_limit: int) -> tuple[list[str], bool]:
@@ -143,6 +140,7 @@ def apply_output_limit(
 
 
 def main(argv: Iterable[str] | None = None) -> int:
+    configure_utf8_stdio()
     parser = build_parser()
     args = parser.parse_args(list(argv) if argv is not None else None)
     if args.output_limit < -1:
@@ -158,7 +156,7 @@ def main(argv: Iterable[str] | None = None) -> int:
     if not es_path.is_file():
         parser.error(f'es.exe not found: {es_path}')
 
-    effective_args = ensure_argv(es_args)
+    effective_args = normalize_core_flags(es_args)
     effective_args, limit_injected = inject_result_limit(effective_args, args.output_limit)
     effective_args, offset_injected = inject_offset(effective_args, args.offset)
 
@@ -185,7 +183,6 @@ def main(argv: Iterable[str] | None = None) -> int:
         'stderr': stderr_entries,
         'result_count': result_count,
         'returned_count': len(limited_entries),
-        'output_limited': args.output_limit >= 0 and result_count > len(limited_entries),
         'search_limited': limit_injected,
         'offset_injected': offset_injected,
         'output_limit': args.output_limit,

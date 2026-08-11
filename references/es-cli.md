@@ -12,7 +12,7 @@ When using the wrapper, place wrapper options before `--` and ES options after i
 python "<skill-root>\scripts\es_wrapper.py" --format json --output-limit 10 -- -sort size "*.zip"
 ```
 
-The wrapper inserts `-argv` as the first ES option. ES 1.1.0.37 uses it to recover Unicode command-line arguments with `CommandLineToArgvW`.
+The wrapper fixes the first ES options to `-argv -cp 65001`. ES 1.1.0.37 uses `-argv` to recover Unicode command-line arguments with `CommandLineToArgvW`; `-cp 65001` makes redirected stdout and stderr UTF-8. Caller-supplied code-page options are replaced by this wrapper setting.
 
 ## Search and matching
 
@@ -88,6 +88,7 @@ Export arguments pass through unchanged. Use wrapper `--output-limit -1` for a c
 
 ## General and state-changing options
 
+- `-cp <code-page>`, `-code-page <code-page>` — set the console or redirected output code page; 65001 is UTF-8
 - `-instance <name>` — connect to a named Everything instance
 - `-ipc1`, `-ipc2` — select an older IPC protocol
 - `-timeout <milliseconds>` — wait for the Everything database before querying

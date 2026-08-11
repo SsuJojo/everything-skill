@@ -11,6 +11,7 @@ Use this Skill for whole-PC file and folder searches on Windows. If the user alr
 
 - Windows
 - Python 3.10 or newer
+- Windows PowerShell 5.1 or PowerShell 7+ for the diagnostic/repair helper
 - Everything installed, indexed, and running
 - The current execution environment can reach the Everything IPC interface
 
@@ -44,7 +45,7 @@ python "<skill-root>\scripts\es_wrapper.py" --format json --output-limit 10 --of
 python "<skill-root>\scripts\es_wrapper.py" --format json -- /ad "project"
 ```
 
-The wrapper passes arguments after `--` to ES. It adds `-argv` for Unicode input, locates the bundled executable relative to itself, and injects `-max-results` and `-offset` only when the caller did not already supply them.
+The wrapper passes arguments after `--` to ES. It fixes the ES prefix to `-argv -cp 65001` for Unicode input and UTF-8 piped output, locates the bundled executable relative to itself, and injects `-max-results` and `-offset` only when the caller did not already supply them.
 
 The JSON output includes the ES command and return code, decoded result lines, counts, limit metadata, the effective offset, and `next_offset`. This is a convenience response for Agents, not a separate public SDK contract.
 
@@ -59,13 +60,13 @@ python "<skill-root>\scripts\es_wrapper.py" --format text -- -get-result-count "
 Run the helper without download flags to validate the bundled CLI and test real IPC connectivity:
 
 ```powershell
-pwsh -NoProfile -File "<skill-root>\scripts\ensure-everything-tools.ps1"
+powershell.exe -NoProfile -File "<skill-root>\scripts\ensure-everything-tools.ps1"
 ```
 
 If ES is missing or incompatible, obtain user consent before allowing a download from the official `voidtools/ES` GitHub release:
 
 ```powershell
-pwsh -NoProfile -File "<skill-root>\scripts\ensure-everything-tools.ps1" -AllowDownload
+powershell.exe -NoProfile -File "<skill-root>\scripts\ensure-everything-tools.ps1" -AllowDownload
 ```
 
 ES return code `8` means the expected Everything IPC window could not be reached. Possible causes include Everything not being installed or running, a named-instance mismatch, or sandbox isolation. Do not claim that Everything is uninstalled based only on this code.

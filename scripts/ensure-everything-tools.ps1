@@ -113,7 +113,7 @@ function Install-LatestEs {
         }
 
         $zipPath = Join-Path $tempDir $assets[0].name
-        Invoke-WebRequest -Uri $assets[0].browser_download_url -OutFile $zipPath -Headers @{ 'User-Agent' = 'everything-skill' }
+        Invoke-WebRequest -Uri $assets[0].browser_download_url -OutFile $zipPath -Headers @{ 'User-Agent' = 'everything-skill' } -UseBasicParsing
         $extractDir = Join-Path $tempDir 'extract'
         Expand-Archive -LiteralPath $zipPath -DestinationPath $extractDir -Force
         $candidates = @(Get-ChildItem -LiteralPath $extractDir -Recurse -File -Filter 'es.exe')
@@ -148,9 +148,17 @@ function Install-LatestEs {
 function Test-EverythingIpc {
     param([Parameter(Mandatory)][string]$Path)
 
-    $output = @(& $Path '-argv' '-get-everything-version' 2>$null)
+    $previousErrorActionPreference = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = 'Continue'
+        $output = @(& $Path '-argv' '-get-everything-version' 2>$null)
+        $exitCode = $LASTEXITCODE
+    }
+    finally {
+        $ErrorActionPreference = $previousErrorActionPreference
+    }
     return [pscustomobject]@{
-        ExitCode = $LASTEXITCODE
+        ExitCode = $exitCode
         Version = (($output -join "`n").Trim())
     }
 }

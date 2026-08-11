@@ -64,5 +64,21 @@ Assert-True ($helperText.Contains('backup-es.exe')) 'Helper must retain a rollba
 $ipc = Test-EverythingIpc -Path $bundledEs
 Assert-True ($ipc.ExitCode -is [int]) 'IPC check must return the native ES exit code.'
 
+$fakeEs = Join-Path ([IO.Path]::GetTempPath()) ('everything-skill-fake-es-' + [guid]::NewGuid().ToString('N') + '.cmd')
+try {
+    [IO.File]::WriteAllText(
+        $fakeEs,
+        "@echo fake IPC error 1>&2`r`n@exit /b 8`r`n",
+        [Text.Encoding]::ASCII
+    )
+    $failedIpc = Test-EverythingIpc -Path $fakeEs
+    Assert-Equal $failedIpc.ExitCode 8 'IPC check must preserve a native failure exit code.'
+}
+finally {
+    if (Test-Path -LiteralPath $fakeEs) {
+        Remove-Item -LiteralPath $fakeEs -Force
+    }
+}
+
 Write-Output 'PowerShell checks passed.'
 exit 0

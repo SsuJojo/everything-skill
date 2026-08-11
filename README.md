@@ -1,6 +1,6 @@
 # Everything Skill
 
-这是一个遵循通用 Agent Skills 目录约定的 Windows 全机文件搜索 Skill。它通过 Voidtools Everything 的 `es.exe` 查询现有索引，并提供简单的 Unicode 输出、默认结果限制和 offset 分页。
+这是一个遵循通用 Agent Skills 目录约定的 Windows 全机文件搜索 Skill。它通过 Voidtools Everything 的 `es.exe` 查询现有索引，并提供 UTF-8 输出、默认结果限制和 offset 分页。
 
 项目不依赖任何特定 Agent 或 Harness。运行时文件均基于 Skill 自身目录定位。
 
@@ -8,10 +8,11 @@
 
 - Windows
 - Python 3.10 或更高版本
+- Windows 自带的 Windows PowerShell 5.1，或 PowerShell 7+
 - 已安装、完成索引并正在运行的 [Everything](https://www.voidtools.com/)
 - 当前 Agent 或 sandbox 的执行环境能够访问 Everything IPC
 
-Agent 能读取 Skill 文件，不等于其 sandbox 一定能连接宿主机 Everything。IPC 不可达时，ES 返回码 `8` 也可能表示 Everything 未运行、命名实例不匹配或执行环境隔离，而不一定表示未安装。
+需要注意的是，Agent 能读取 Skill 文件，不等于其 sandbox 一定能连接宿主机 Everything。IPC 不可达时，ES 返回码 `8` 也可能表示 Everything 未运行、命名实例不匹配或执行环境隔离，而不一定表示未安装。
 
 ## 安装
 
@@ -21,7 +22,7 @@ Agent 能读取 Skill 文件，不等于其 sandbox 一定能连接宿主机 Eve
 <agent-skills>/everything/SKILL.md
 ```
 
-不要只复制 `SKILL.md`；`scripts/`、`bin/`、`references/` 和 `licenses/` 都属于 Skill 运行时。
+不要只复制 `SKILL.md`，`scripts/`、`bin/`、`references/` 和 `licenses/` 都属于 Skill 运行时。
 
 ## 目录结构
 
@@ -57,13 +58,13 @@ python scripts/es_wrapper.py --format json -- "*.pdf"
 诊断 bundled ES 与 Everything IPC（不会自动下载）：
 
 ```powershell
-pwsh -NoProfile -File scripts/ensure-everything-tools.ps1
+powershell.exe -NoProfile -File scripts/ensure-everything-tools.ps1
 ```
 
 只有在用户同意后，才允许 helper 修复缺失或架构不兼容的 ES：
 
 ```powershell
-pwsh -NoProfile -File scripts/ensure-everything-tools.ps1 -AllowDownload
+powershell.exe -NoProfile -File scripts/ensure-everything-tools.ps1 -AllowDownload
 ```
 
 helper 从官方 [`voidtools/ES`](https://github.com/voidtools/ES) 最新 release 选择与 Windows 原生架构匹配的 x86、x64、ARM 或 ARM64 asset。它不会安装 Everything 主程序。
@@ -72,6 +73,7 @@ helper 从官方 [`voidtools/ES`](https://github.com/voidtools/ES) 最新 releas
 
 - 从自身位置解析 `bin/es.exe`
 - 将 ES 1.1.0.37 的 `-argv` 放在 ES 参数首位，以支持 Unicode 输入
+- 固定使用 `-cp 65001`，使管道中的 stdout 和 stderr 使用 UTF-8
 - 默认最多返回 20 行，可通过 `--output-limit` 调整
 - 使用 `--offset` 进行简单分页
 - 提供 text、json 和 json-pretty 输出
@@ -79,14 +81,16 @@ helper 从官方 [`voidtools/ES`](https://github.com/voidtools/ES) 最新 releas
 
 对于统计、列输出、CSV/JSON 等 ES 原生 stdout，建议使用 `--format text`。完整导出应使用 `--output-limit -1`，并遵循宿主 Harness 正常的文件写入和覆盖确认规则。
 
+通过 `--es-path` 指定的自定义 ES 应与 bundled ES 1.1.0.37 兼容，并支持 `-argv` 与 `-cp 65001`。
+
 ## 开发验证
 
 ```powershell
 python -m unittest discover -s tests -v
-pwsh -NoProfile -File tests/test_ensure_everything_tools.ps1
+powershell.exe -NoProfile -File tests/test_ensure_everything_tools.ps1
 ```
 
-CI 使用 Windows、Python 3.14 和 PowerShell 7，并运行最小单元测试及 Agent Skills 规范验证。项目不承诺 Python 3.8 或 Windows PowerShell 5.1 的长期兼容矩阵。
+CI 使用 Windows 和 Python 3.14，并分别在 Windows PowerShell 5.1 与 PowerShell 7 中运行 helper 测试，同时执行最小单元测试及 Agent Skills 规范验证。项目不承诺 Python 3.8 兼容。
 
 ## 第三方组件
 
