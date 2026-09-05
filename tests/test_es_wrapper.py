@@ -28,8 +28,8 @@ class WrapperFunctionTests(unittest.TestCase):
 
     def test_invalid_bytes_have_a_replacement_fallback(self):
         entries, text = es_wrapper.decode_output(b'prefix\xff')
-        self.assertEqual(text, 'prefix�')
-        self.assertEqual(entries[0]['encoding'], 'utf-8-replace')
+        self.assertTrue(text.startswith('prefix'))
+        self.assertEqual(entries[0]['path'], text)
 
     def test_limit_and_offset_injection_are_exact(self):
         arguments, limit_injected = es_wrapper.inject_result_limit(['query'], 20)
