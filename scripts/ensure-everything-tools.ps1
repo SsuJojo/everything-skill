@@ -1,5 +1,5 @@
 param(
-    [string]$WorkspaceRoot = "C:\Users\SsuJo_\.openclaw\workspace",
+    [switch]$AllowDownload,
     [switch]$ForceDownload
 )
 
@@ -8,133 +8,231 @@ $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
 $OutputEncoding = [System.Text.UTF8Encoding]::new($false)
 
-$skillRoot = Join-Path $WorkspaceRoot 'skills\everything'
-$binDir = Join-Path $skillRoot 'bin'
-$esPath = Join-Path $binDir 'es.exe'
-$tempDir = Join-Path $env:TEMP ('everything-skill-' + [guid]::NewGuid().ToString('N'))
-$repoApi = 'https://api.github.com/repos/voidtools/Everything/releases/latest'
+$script:MinimumEsVersion = [version]'1.1.0.30'
+$script:ReleaseApi = 'https://api.github.com/repos/voidtools/ES/releases/latest'
+$script:SkillRoot = Split-Path -Parent $PSScriptRoot
+$script:EsPath = Join-Path $script:SkillRoot 'bin\es.exe'
 
-function Test-EsExecutable {
-    param([string]$Path)
-    if (-not (Test-Path $Path)) { return $false }
-    try {
-        $p = Start-Process -FilePath $Path -ArgumentList '-version' -NoNewWindow -Wait -PassThru -RedirectStandardOutput "$env:TEMP\es-version-out.txt" -RedirectStandardError "$env:TEMP\es-version-err.txt"
-        return $p.ExitCode -eq 0
-    } catch {
-        return $false
+function Get-NativeArchitecture {
+    $value = $env:PROCESSOR_ARCHITEW6432
+    if (-not $value) {
+        $value = $env:PROCESSOR_ARCHITECTURE
+    }
+
+    switch ($value.ToUpperInvariant()) {
+        'AMD64' { return 'x64' }
+        'X86' { return 'x86' }
+        'ARM64' { return 'arm64' }
+        'ARM' { return 'arm' }
+        default { throw "Unsupported Windows architecture: $value" }
     }
 }
 
 function Get-AssetPattern {
-    if ([Environment]::Is64BitOperatingSystem) {
-        return 'es-.*x64.*\.zip$'
+    param([Parameter(Mandatory)][string]$Architecture)
+
+    switch ($Architecture) {
+        'x64' { return '^ES-[0-9.]+\.x64\.zip$' }
+        'x86' { return '^ES-[0-9.]+\.zip$' }
+        'arm64' { return '^ES-[0-9.]+\.ARM64\.zip$' }
+        'arm' { return '^ES-[0-9.]+\.ARM\.zip$' }
+        default { throw "Unsupported ES architecture: $Architecture" }
     }
-    return 'es-.*\.zip$'
 }
 
-function Download-EsFromGithub {
-    param([string]$TargetPath)
+function Get-PeArchitecture {
+    param([Parameter(Mandatory)][string]$Path)
 
-    New-Item -ItemType Directory -Force -Path $binDir | Out-Null
-    New-Item -ItemType Directory -Force -Path $tempDir | Out-Null
-
-    $release = Invoke-RestMethod -Uri $repoApi -Headers @{ 'User-Agent' = 'OpenClaw-Everything-Skill' }
-    $pattern = Get-AssetPattern
-    $asset = $release.assets | Where-Object { $_.name -match $pattern } | Select-Object -First 1
-    if (-not $asset) {
-        throw "No compatible es.exe asset found in latest release."
+    $bytes = [IO.File]::ReadAllBytes($Path)
+    if ($bytes.Length -lt 64 -or $bytes[0] -ne 0x4d -or $bytes[1] -ne 0x5a) {
+        throw "Not a valid PE executable: $Path"
     }
 
-    $zipPath = Join-Path $tempDir $asset.name
-    Invoke-WebRequest -Uri $asset.browser_download_url -OutFile $zipPath -Headers @{ 'User-Agent' = 'OpenClaw-Everything-Skill' }
-
-    $extractDir = Join-Path $tempDir 'extract'
-    Expand-Archive -Path $zipPath -DestinationPath $extractDir -Force
-
-    $downloadedEs = Get-ChildItem -Path $extractDir -Recurse -File -Filter 'es.exe' | Select-Object -First 1
-    if (-not $downloadedEs) {
-        throw 'Downloaded archive does not contain es.exe'
+    $peOffset = [BitConverter]::ToInt32($bytes, 0x3c)
+    if ($peOffset -lt 0 -or $peOffset + 6 -gt $bytes.Length) {
+        throw "Invalid PE header: $Path"
+    }
+    if ([BitConverter]::ToUInt32($bytes, $peOffset) -ne 0x00004550) {
+        throw "Invalid PE signature: $Path"
     }
 
-    Copy-Item -Path $downloadedEs.FullName -Destination $TargetPath -Force
+    switch ([BitConverter]::ToUInt16($bytes, $peOffset + 4)) {
+        0x014c { return 'x86' }
+        0x8664 { return 'x64' }
+        0x01c4 { return 'arm' }
+        0xaa64 { return 'arm64' }
+        default { throw "Unsupported PE machine type in $Path" }
+    }
 }
 
-function Convert-ToEscapedUnicode {
-    param([string]$Text)
-    if ($null -eq $Text) { return $null }
-    $builder = New-Object System.Text.StringBuilder
-    foreach ($ch in $Text.ToCharArray()) {
-        $code = [int][char]$ch
-        if ($code -ge 32 -and $code -le 126 -and $ch -ne '\\') {
-            [void]$builder.Append($ch)
-        } else {
-            [void]$builder.Append(('\u{0:x4}' -f $code))
-        }
-    }
-    return $builder.ToString()
-}
-
-function Find-EverythingExe {
-    param([string]$EsExePath)
-
-    $paths = @()
-    if (Test-Path $EsExePath) {
-        try {
-            $paths = & $EsExePath 'Everything.exe' 2>$null
-        } catch {
-            $paths = @()
-        }
-    }
-
-    $preferred = $paths | Where-Object {
-        $_ -match '\\Everything\.exe$' -and ($_ -match '^([A-Za-z]:\\)')
-    } | Select-Object -Unique
-
-    if ($preferred) {
-        return $preferred[0]
-    }
-
-    $fallbacks = @(
-        'C:\Program Files\Everything\Everything.exe',
-        'C:\Program Files (x86)\Everything\Everything.exe',
-        (Join-Path $env:LOCALAPPDATA 'Everything\Everything.exe')
+function Get-EsMetadata {
+    param(
+        [Parameter(Mandatory)][string]$Path,
+        [Parameter(Mandatory)][string]$ExpectedArchitecture
     )
 
-    foreach ($candidate in $fallbacks) {
-        if ($candidate -and (Test-Path $candidate)) {
-            return $candidate
-        }
+    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
+        throw "es.exe not found: $Path"
     }
 
-    return $null
+    $architecture = Get-PeArchitecture -Path $Path
+    if ($architecture -ne $ExpectedArchitecture) {
+        throw "es.exe architecture $architecture does not match host $ExpectedArchitecture"
+    }
+
+    $versionText = (Get-Item -LiteralPath $Path).VersionInfo.ProductVersion
+    try {
+        $version = [version]$versionText
+    }
+    catch {
+        throw "Unable to read es.exe version: $versionText"
+    }
+    if ($version -lt $script:MinimumEsVersion) {
+        throw "es.exe $version is older than required $script:MinimumEsVersion"
+    }
+
+    return [pscustomobject]@{
+        Version = $version.ToString()
+        Architecture = $architecture
+    }
 }
 
-try {
-    $esReady = $false
-    if (-not $ForceDownload) {
-        $esReady = Test-EsExecutable -Path $esPath
-    }
+function Install-LatestEs {
+    param(
+        [Parameter(Mandatory)][string]$TargetPath,
+        [Parameter(Mandatory)][string]$ExpectedArchitecture
+    )
 
-    if (-not $esReady) {
-        Download-EsFromGithub -TargetPath $esPath
-        $esReady = Test-EsExecutable -Path $esPath
-        if (-not $esReady) {
-            throw 'es.exe still not runnable after download'
+    $tempDir = Join-Path ([IO.Path]::GetTempPath()) ('everything-skill-' + [guid]::NewGuid().ToString('N'))
+    $backupPath = Join-Path $tempDir 'backup-es.exe'
+    $hadOriginal = Test-Path -LiteralPath $TargetPath -PathType Leaf
+
+    try {
+        New-Item -ItemType Directory -Path $tempDir -Force | Out-Null
+        $release = Invoke-RestMethod -Uri $script:ReleaseApi -Headers @{ 'User-Agent' = 'everything-skill' }
+        $pattern = Get-AssetPattern -Architecture $ExpectedArchitecture
+        $assets = @($release.assets | Where-Object { $_.name -match $pattern })
+        if ($assets.Count -ne 1) {
+            throw "Expected one compatible ES asset, found $($assets.Count)"
+        }
+
+        $zipPath = Join-Path $tempDir $assets[0].name
+        Invoke-WebRequest -Uri $assets[0].browser_download_url -OutFile $zipPath -Headers @{ 'User-Agent' = 'everything-skill' } -UseBasicParsing
+        $extractDir = Join-Path $tempDir 'extract'
+        Expand-Archive -LiteralPath $zipPath -DestinationPath $extractDir -Force
+        $candidates = @(Get-ChildItem -LiteralPath $extractDir -Recurse -File -Filter 'es.exe')
+        if ($candidates.Count -ne 1) {
+            throw "Expected one es.exe in downloaded archive, found $($candidates.Count)"
+        }
+
+        $null = Get-EsMetadata -Path $candidates[0].FullName -ExpectedArchitecture $ExpectedArchitecture
+        New-Item -ItemType Directory -Path (Split-Path -Parent $TargetPath) -Force | Out-Null
+        if ($hadOriginal) {
+            Copy-Item -LiteralPath $TargetPath -Destination $backupPath -Force
+        }
+        Copy-Item -LiteralPath $candidates[0].FullName -Destination $TargetPath -Force
+        return Get-EsMetadata -Path $TargetPath -ExpectedArchitecture $ExpectedArchitecture
+    }
+    catch {
+        if ($hadOriginal -and (Test-Path -LiteralPath $backupPath)) {
+            Copy-Item -LiteralPath $backupPath -Destination $TargetPath -Force
+        }
+        elseif (-not $hadOriginal -and (Test-Path -LiteralPath $TargetPath)) {
+            Remove-Item -LiteralPath $TargetPath -Force
+        }
+        throw
+    }
+    finally {
+        if (Test-Path -LiteralPath $tempDir) {
+            Remove-Item -LiteralPath $tempDir -Recurse -Force -ErrorAction SilentlyContinue
         }
     }
-
-    $everythingExe = Find-EverythingExe -EsExePath $esPath
-
-    [pscustomobject]@{
-        esPath = $esPath
-        esReady = $esReady
-        everythingExe = $everythingExe
-        esPathEscaped = (Convert-ToEscapedUnicode -Text $esPath)
-        everythingExeEscaped = (Convert-ToEscapedUnicode -Text $everythingExe)
-    } | ConvertTo-Json -Compress
 }
-finally {
-    if (Test-Path $tempDir) {
-        Remove-Item -Recurse -Force $tempDir -ErrorAction SilentlyContinue
+
+function Test-EverythingIpc {
+    param([Parameter(Mandatory)][string]$Path)
+
+    $previousErrorActionPreference = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = 'Continue'
+        $output = @(& $Path '-get-everything-version' 2>$null)
+        $exitCode = $LASTEXITCODE
     }
+    finally {
+        $ErrorActionPreference = $previousErrorActionPreference
+    }
+    return [pscustomobject]@{
+        ExitCode = $exitCode
+        Version = (($output -join "`n").Trim())
+    }
+}
+
+function Write-HelperResult {
+    param([Parameter(Mandatory)][hashtable]$Values)
+    [Console]::Out.WriteLine(([pscustomobject]$Values | ConvertTo-Json -Compress))
+}
+
+function Invoke-EverythingToolsCheck {
+    $hostArchitecture = $null
+    $metadata = $null
+
+    try {
+        if ($ForceDownload -and -not $AllowDownload) {
+            throw 'ForceDownload requires -AllowDownload.'
+        }
+
+        $hostArchitecture = Get-NativeArchitecture
+        if (-not $ForceDownload) {
+            try {
+                $metadata = Get-EsMetadata -Path $script:EsPath -ExpectedArchitecture $hostArchitecture
+            }
+            catch {
+                if (-not $AllowDownload) {
+                    throw "$($_.Exception.Message) Re-run with -AllowDownload to repair from the official voidtools/ES release."
+                }
+            }
+        }
+
+        if ($ForceDownload -or -not $metadata) {
+            $metadata = Install-LatestEs -TargetPath $script:EsPath -ExpectedArchitecture $hostArchitecture
+        }
+
+        $ipc = Test-EverythingIpc -Path $script:EsPath
+        $reachable = $ipc.ExitCode -eq 0
+        $message = if ($reachable) {
+            'ES is ready and Everything IPC is reachable.'
+        }
+        else {
+            "ES is ready, but Everything IPC is not reachable (ES exit code $($ipc.ExitCode))."
+        }
+
+        Write-HelperResult -Values @{
+            es_path = $script:EsPath
+            es_ready = $true
+            es_version = $metadata.Version
+            host_architecture = $hostArchitecture
+            es_architecture = $metadata.Architecture
+            ipc_reachable = $reachable
+            everything_version = $(if ($reachable) { $ipc.Version } else { $null })
+            message = $message
+        }
+        return [int]$ipc.ExitCode
+    }
+    catch {
+        Write-HelperResult -Values @{
+            es_path = $script:EsPath
+            es_ready = $false
+            es_version = $(if ($metadata) { $metadata.Version } else { $null })
+            host_architecture = $hostArchitecture
+            es_architecture = $(if ($metadata) { $metadata.Architecture } else { $null })
+            ipc_reachable = $false
+            everything_version = $null
+            message = $_.Exception.Message
+        }
+        return 1
+    }
+}
+
+if ($MyInvocation.InvocationName -ne '.') {
+    exit (Invoke-EverythingToolsCheck)
 }

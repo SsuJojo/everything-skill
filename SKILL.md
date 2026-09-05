@@ -10,8 +10,8 @@ Use this skill for whole-PC file and folder search on Windows.
 ## Core job
 
 1. Treat requests without a concrete path as whole-PC search.
-2. Use `skills\everything\scripts\es_wrapper.py` as the default entrypoint.
-3. Let the wrapper call `skills\everything\bin\es.exe`, decode raw bytes safely, and return UTF-8 text or JSON.
+2. Resolve `scripts\es_wrapper.py` relative to this Skill's directory and use it as the default entrypoint.
+3. Let the wrapper call `bin\es.exe`, decode raw bytes safely, and return UTF-8 text or JSON.
 4. Keep both search volume and output volume capped by default.
 5. Use pagination with `--offset` for broad queries.
 6. Use `Everything.exe` only if the task explicitly needs the GUI or `es.exe` cannot solve it.
@@ -40,7 +40,7 @@ Do **not** use whole-PC search behavior when the user already gave:
 2. If the user did not specify a path, search with `es_wrapper.py` first.
 3. Keep the wrapper default limits unless the user clearly asks for more results.
 4. For large result sets, page with `--offset` instead of dumping more rows at once.
-5. If `es.exe` is missing or broken, repair it with `scripts\ensure-everything-tools.ps1` and retry.
+5. If `es.exe` is missing or broken, ask for permission before running `scripts\ensure-everything-tools.ps1 -AllowDownload` and retry.
 6. Use `Everything.exe` only as a fallback for GUI-specific tasks.
 7. Return concise natural-language results unless the user asked for raw output.
 
@@ -56,28 +56,28 @@ Do **not** use whole-PC search behavior when the user already gave:
 - Default entrypoint:
 
 ```powershell
-python skills\everything\scripts\es_wrapper.py -- <query>
+python "<skill-root>\scripts\es_wrapper.py" -- <query>
 ```
 
 - Limit rows explicitly when needed:
 
 ```powershell
-python skills\everything\scripts\es_wrapper.py --output-limit 10 -- <query>
+python "<skill-root>\scripts\es_wrapper.py" --output-limit 10 -- <query>
 ```
 
 - Get the next page:
 
 ```powershell
-python skills\everything\scripts\es_wrapper.py --output-limit 10 --offset 10 -- <query>
+python "<skill-root>\scripts\es_wrapper.py" --output-limit 10 --offset 10 -- <query>
 ```
 
 ## Wrapper behavior
 
-`skills\everything\scripts\es_wrapper.py` should be the normal path for searches.
+`<skill-root>\scripts\es_wrapper.py` should be the normal path for searches.
 
 It should:
 
-- call `skills\everything\bin\es.exe`
+- call `bin\es.exe` relative to the Skill root
 - capture stdout/stderr as raw bytes
 - decode Chinese paths safely
 - emit UTF-8 text or JSON
@@ -91,20 +91,24 @@ Use `--output-limit -1` only when the task truly needs unrestricted output.
 ## Common patterns
 
 ```powershell
-python skills\everything\scripts\es_wrapper.py -- 晴天
-python skills\everything\scripts\es_wrapper.py --output-limit 10 -- 1
-python skills\everything\scripts\es_wrapper.py --output-limit 10 --offset 10 -- 1
-python skills\everything\scripts\es_wrapper.py --output-limit 20 -- -sort dm -n 20
-python skills\everything\scripts\es_wrapper.py --output-limit 20 -- /ad <query>
+python "<skill-root>\scripts\es_wrapper.py" -- 晴天
+python "<skill-root>\scripts\es_wrapper.py" --output-limit 10 -- 1
+python "<skill-root>\scripts\es_wrapper.py" --output-limit 10 --offset 10 -- 1
+python "<skill-root>\scripts\es_wrapper.py" --output-limit 20 -- -sort dm -n 20
+python "<skill-root>\scripts\es_wrapper.py" --output-limit 20 -- /ad <query>
 ```
 
 ## Fallbacks
 
 ### Repair `es.exe`
 
-If `skills\everything\bin\es.exe` is missing or cannot run, use:
+If the bundled `bin\es.exe` is missing or cannot run, use:
 
-- `skills\everything\scripts\ensure-everything-tools.ps1`
+- `powershell.exe -NoProfile -File "<skill-root>\scripts\ensure-everything-tools.ps1"`
+
+The helper only diagnoses by default. If the bundled client is missing or incompatible,
+obtain user consent before adding `-AllowDownload`; downloads come from the official
+`voidtools/ES` release and are selected for the host architecture.
 
 ### Use `Everything.exe` only when necessary
 
@@ -121,9 +125,3 @@ Do not rely on `PATH`.
 
 - `references/es-cli.md` — `es.exe` flag reference
 - `references/everything-options.md` — `Everything.exe` option reference when GUI fallback is truly needed
-
-## Initial implementation scope
-
-- 询问用户是否安装 Everything 并保持后台运行
-- 若未安装 Everything ，根据你的模型强度，自行决定 执行命令自动从官网下载安装/协助用户从官网下载安装/提示未安装 Everything ，无法完成配置
-- [ ] 是否已完成配置，完成则在前方复选框内打钩
