@@ -60,7 +60,7 @@ def decode_line(raw_line: bytes) -> tuple[str, str]:
     for encoding in candidate_encodings():
         try:
             text = raw_line.decode(encoding)
-        except UnicodeDecodeError:
+        except (LookupError, UnicodeDecodeError):
             continue
         score = score_text(text)
         if score < best_score:

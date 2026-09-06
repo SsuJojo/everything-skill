@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: windows-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+      - name: Run Python 3.10 tests
+        run: python -m unittest discover -s tests -v
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Run Python 3.12 tests
+        run: python -m unittest discover -s tests -v
+      - name: Run Windows PowerShell 5.1 checks
+        shell: powershell
+        run: .\tests\test_ensure_everything_tools.ps1
+      - name: Run PowerShell 7 checks
+        shell: pwsh
+        run: ./tests/test_ensure_everything_tools.ps1
+      - name: Install Agent Skills validator
+        run: python -m pip install skills-ref==0.1.1
+      - name: Validate Agent Skill metadata
+        shell: powershell
+        run: |
+          $skillDir = Join-Path $env:RUNNER_TEMP 'everything'
+          New-Item -ItemType Directory -Path $skillDir -Force | Out-Null
+          Copy-Item -LiteralPath ./SKILL.md -Destination (Join-Path $skillDir 'SKILL.md')
+          agentskills validate $skillDir

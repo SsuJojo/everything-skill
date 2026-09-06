@@ -23,6 +23,8 @@ https://github.com/SsuJojo/everything-skill.git
 
 安装后加载仓库中的 `SKILL.md`，并根据其中的初始化说明检查 Everything 与 `es.exe` 是否可用。
 
+安装位置可以由宿主 Agent 决定；脚本会从自身目录解析 `bin/`，不要求固定的 workspace、用户名或 Skill 安装路径。
+
 ## 适用场景
 
 当用户表达的是以下这类意图时，应使用这个 Skill：
@@ -59,6 +61,14 @@ https://github.com/SsuJojo/everything-skill.git
 - Voidtools Everything 已安装并建立索引
 - 需要命令行搜索时，`es.exe` 应可调用
 
+诊断或修复 bundled ES：
+
+```powershell
+powershell.exe -NoProfile -File "<skill-root>\scripts\ensure-everything-tools.ps1"
+```
+
+默认只检查本地文件并测试 Everything IPC。若确实需要从官方 `voidtools/ES` release 下载匹配当前 Windows 架构的 ES，先征得用户同意，再添加 `-AllowDownload`；helper 不会安装 Everything 主程序。
+
 搜索结果的覆盖范围取决于 Everything 当前索引状态。
 
 安装、服务管理、USN 日志相关操作属于系统级操作，不应在没有明确需要时自动修改。
@@ -68,3 +78,12 @@ https://github.com/SsuJojo/everything-skill.git
 **Working Skill / 可实际调用。**
 
 这是一个刻意保持很小的集成项目：核心价值不在重新实现文件索引，而在于把 Everything 已经非常成熟的搜索能力变成 Agent 可以可靠选择和调用的工具边界。
+
+## 开发验证
+
+```powershell
+python -m unittest discover -s tests -v
+powershell.exe -NoProfile -File tests\test_ensure_everything_tools.ps1
+```
+
+Windows CI 会在 Python 3.10/3.12、Windows PowerShell 5.1 和 PowerShell 7 上运行这些检查，并验证 Skill 元数据。
