@@ -44,6 +44,21 @@ class WrapperFunctionTests(unittest.TestCase):
         self.assertFalse(es_wrapper.inject_offset(arguments, 30)[1])
 
 
+class SplitLinesTests(unittest.TestCase):
+    def test_normalizes_line_endings_and_discards_empty_segments(self):
+        raw = b'first\r\n\rsecond\n\nthird\r'
+        self.assertEqual(es_wrapper.split_lines(raw), [b'first', b'second', b'third'])
+
+    def test_empty_and_delimiter_only_input_have_no_lines(self):
+        for raw in (b'', b'\n', b'\r', b'\r\n', b'\n\r\n'):
+            with self.subTest(raw=raw):
+                self.assertEqual(es_wrapper.split_lines(raw), [])
+
+    def test_text_input_is_rejected_by_byte_delimiter_operations(self):
+        with self.assertRaises(TypeError):
+            es_wrapper.split_lines('not bytes')
+
+
 class WrapperMainTests(unittest.TestCase):
     def run_main(self, argv, completed_process):
         output = io.StringIO()
